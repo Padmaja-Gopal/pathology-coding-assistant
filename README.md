@@ -5,7 +5,7 @@ An **AI-assisted pathology coding tool** that reads a de-identified surgical pat
 Built by a **CPC-A certified Pathology coder** to reflect real coding workflows, compliance rules, and denial-prevention logic.
 
 **▶️ Live demo:** _add your GitHub Pages link here after enabling Pages_
-_(e.g., https://padmaja-gopal.github.io/Pathology-coding-assistant/)_
+_(e.g.,https://padmaja-gopal.github.io/pathology-coding-assistant/)_
 
 ---
 
