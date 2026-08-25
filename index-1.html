@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pathology Coding Assistant — Live Demo</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f1722; color:#e8eef5; line-height:1.55; padding:16px; max-width:760px; margin:0 auto; min-height:100vh; }
+  .header { text-align:center; padding:10px 0 6px; }
+  .header h1 { font-size:1.4rem; color:#5aa9f0; }
+  .header p { font-size:.82rem; color:#8aa0b5; margin-top:4px; }
+  .demo-badge { display:inline-block; background:#2a4a72; color:#cfe2f7; font-size:.7rem; font-weight:700; padding:3px 10px; border-radius:20px; margin-top:8px; letter-spacing:.5px; }
+  .modes { display:flex; gap:8px; margin:16px 0; }
+  .mode-btn { flex:1; padding:12px 6px; border-radius:12px; border:1.5px solid #2a3a4f; background:#16202d; color:#8aa0b5; font-size:.85rem; font-weight:600; cursor:pointer; font-family:inherit; transition:.15s; }
+  .mode-btn.active { background:#2a4a72; color:#cfe2f7; border-color:#3d7bd6; }
+  .mode-desc { font-size:.78rem; color:#7f97ad; text-align:center; margin-bottom:14px; min-height:2.2em; }
+  .safety { background:#1a2a1f; border:1px solid #2f7d4f; border-radius:10px; padding:10px 14px; font-size:.78rem; color:#a8e9c4; margin-bottom:14px; }
+  .safety b { color:#43c478; }
+  .section-label { font-size:.8rem; color:#9fb4c9; margin:14px 0 7px; font-weight:600; }
+  .samples { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .sample-btn { text-align:left; background:#16202d; border:1.5px solid #2a3a4f; border-radius:10px; padding:11px 14px; color:#dbe6f2; font-size:.83rem; cursor:pointer; font-family:inherit; transition:.12s; }
+  .sample-btn:active { transform:scale(.99); }
+  .sample-btn.active { border-color:#5aa9f0; background:#1e2f45; }
+  .sample-btn .st { font-weight:700; color:#7fc0f5; }
+  .sample-btn .sd { font-size:.74rem; color:#8aa0b5; margin-top:2px; }
+  textarea { width:100%; background:#101b27; border:1.5px solid #2a3a4f; border-radius:12px; padding:12px 14px; color:#dbe6f2; font-family:'Courier New',monospace; font-size:.82rem; resize:vertical; min-height:150px; }
+  textarea:focus { outline:none; border-color:#5aa9f0; }
+  .run-btn { width:100%; padding:15px; border-radius:12px; border:none; background:linear-gradient(90deg,#3d7bd6,#5aa9f0); color:#fff; font-size:1rem; font-weight:700; cursor:pointer; font-family:inherit; margin-top:14px; }
+  .run-btn:active { transform:scale(.99); }
+  .result { margin-top:18px; background:#16202d; border:1px solid #243349; border-radius:14px; padding:16px; font-size:.86rem; white-space:pre-wrap; display:none; font-family:'Courier New',monospace; line-height:1.6; }
+  .result.show { display:block; animation:fade .3s; }
+  .result.blocked { background:#3d1c1c; border-color:#e8645a; color:#f5c0bb; text-align:center; font-weight:600; font-family:inherit; font-size:1rem; padding:22px 16px; }
+  @keyframes fade { from { opacity:0; transform:translateY(6px); } to { opacity:1; } }
+  .loading { text-align:center; color:#5aa9f0; padding:20px; display:none; }
+  .loading.show { display:block; }
+  .spinner { display:inline-block; width:18px; height:18px; border:2px solid #2a3a4f; border-top-color:#5aa9f0; border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; margin-right:8px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .disclaimer { font-size:.72rem; color:#6b8199; text-align:center; margin-top:20px; padding-top:14px; border-top:1px solid #1c2838; }
+  .disclaimer b { color:#8aa0b5; }
+  .try-hint { font-size:.75rem; color:#e8b04a; text-align:center; margin:6px 0 0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔬 Pathology Coding Assistant</h1>
+  <p>ICD-10-CM · CPT · Modifier · MIPS — built by a CPC-A Pathology coder</p>
+  <span class="demo-badge">● LIVE DEMO — pre-loaded sample cases</span>
+</div>
+
+<div class="modes">
+  <button class="mode-btn active" id="mAssistant" onclick="setMode('assistant')">🔍 Assistant</button>
+  <button class="mode-btn" id="mPractice" onclick="setMode('practice')">🎓 Practice</button>
+  <button class="mode-btn" id="mExtract" onclick="setMode('extract')">🧬 Structured Extract</button>
+</div>
+<div class="mode-desc" id="modeDesc">Real-life doubt-solver: pick a sample report, get the codes with rationale.</div>
+
+<div class="safety">
+  🛡️ <b>Privacy first:</b> The tool rejects any input containing patient identifiers (MRN, accession number, physician name, dates). Try the last sample to see this in action.
+</div>
+
+<div class="section-label">📋 Choose a sample pathology report:</div>
+<div class="samples" id="samples"></div>
+
+<textarea id="reportBox" placeholder="Select a sample above, or paste your own de-identified report..."></textarea>
+<p class="try-hint" id="tryHint">👆 Tap a sample report, then "Get Codes"</p>
+
+<button class="run-btn" onclick="runCoding()">Get Codes →</button>
+
+<div class="loading" id="loading"><span class="spinner"></span>Analyzing report...</div>
+<div class="result" id="result"></div>
+
+<div class="disclaimer">
+  ⚠️ <b>Demo version:</b> shows representative coded outputs for the sample cases. The production version connects to a live AI model (Anthropic Claude) via a secure backend. Suggestions only — a certified coder must validate all codes against current-year CPT®/ICD-10-CM before billing. CPT® is a registered trademark of the AMA. MIPS: verify at qpp.cms.gov.
+</div>
+
+<script>
+// ===== Pre-loaded sample cases with real coded outputs =====
+const SAMPLES = [
+  {
+    id: 'mue',
+    title: '16-specimen report (MUE limit demo)',
+    desc: 'Breast + lung + 14 colon polyps — hits the 88305 unit ceiling',
+    report: `SPECIMEN A: Right Breast, core needle biopsy
+SPECIMEN B: Left Lung, core needle biopsy — Invasive adenocarcinoma, histologic type documented
+SPECIMENS C through P: Colon, polypectomies (14 separately submitted polyps)
+All specimens separately submitted in individual cassettes.`,
+    assistant: `CPT + UNITS (with MUE check)
+• 88305 (Breast core) — 1 unit
+• 88305-XS (Lung core) — 1 unit
+• 88305-XS (Colon polyps) — 14 units
+• TOTAL: 88305 x16
+
+MUE CHECK ✅
+• 88305 MUE limit = 16 units per date of service.
+• This report = exactly 16 → processes normally (at the ceiling).
+• Distinct specimens separated with modifier XS so payer edits don't bundle them.
+
+MIPS
+• Specimen B (lung core, histologic type documented) → Measure #395 → G9418 (Performance Met). Verify at qpp.cms.gov.
+
+RATIONALE
+Each separately submitted specimen = one unit of 88305. Summed = 16, which equals the 88305 MUE ceiling, so the claim passes. If a 17th 88305 specimen were added, the excess would DENY (MUE collision) and need resolution before submission. MUE values change quarterly — verify in CMS NCCI/MUE tables.
+
+⚠️ Suggestions only — a certified coder must validate before billing.`,
+    practice: `🎓 STEP-BY-STEP (for CPC learners) — MUE focus
+
+STEP 1 — Count the specimens
+Breast (1) + Lung (1) + Colon polyps (14) = 16 specimens, all 88305 (Level IV).
+
+STEP 2 — Units
+88305 x16 total.
+
+STEP 3 — Modifiers for distinct specimens
+Same-day distinct specimens → add XS so payer edits don't bundle them:
+• Line 1: 88305 (first)
+• Line 2: 88305-XS (lung)
+• Line 3: 88305-XS x14 (colon)
+
+STEP 4 — Check the MUE limit!  ← the key lesson
+88305 MUE limit = 16 units/day. This report = 16 → passes at the ceiling.
+If it were 17 → the 17th unit DENIES (an "MUE collision").
+
+STEP 5 — MIPS still applies
+Lung core with histologic type documented → Measure #395 → G9418.
+
+MUE LIMITS TO REMEMBER: 88300=4, 88302=4, 88304=5, 88305=16, 88307=8, 88309=3.
+
+ANSWER: 88305 x16 (at MUE ceiling — passes) | MIPS #395 G9418
+
+⚠️ Suggestions only — validate before billing. MUE values change quarterly.`,
+    extract: {
+      "Report_Summary": { "Total_Specimens": 16, "Primary_CPT": "88305", "Total_Units": 16 },
+      "Billing_Lines": [
+        { "Line": 1, "CPT": "88305", "Specimen": "Right breast core biopsy", "Units": 1 },
+        { "Line": 2, "CPT": "88305-XS", "Specimen": "Left lung core biopsy", "Units": 1, "MIPS": { "Measure": "#395 Lung Biopsy/Cytology", "QDC": "G9418", "Status": "Performance Met" } },
+        { "Line": 3, "CPT": "88305-XS", "Specimen": "Colon polypectomies", "Units": 14 }
+      ],
+      "MUE_Check": { "Code": "88305", "MUE_Limit": 16, "Units_Billed": 16, "Result": "At limit — processes normally", "Note": "A 17th unit would exceed the limit and deny (MUE collision). MUE values change quarterly — verify in CMS NCCI/MUE tables." },
+      "Coding_Integrity_Notes": [
+        "Each separately submitted specimen = one 88305 unit; distinct specimens carry XS so edits don't bundle them.",
+        "16 units = exactly the 88305 MUE ceiling → claim passes.",
+        "MIPS #395 (G9418) applies to the lung core with documented histologic type."
+      ],
+      "Reasoning": "Sixteen separately submitted Level IV specimens = 88305 x16, exactly the MUE limit, so the claim processes. XS modifiers keep the distinct specimens from bundling. The lung specimen triggers MIPS #395."
+    }
+  },
+  {
+    id: 'mips',
+    title: 'Prostate + Lung resections (MIPS demo)',
+    desc: 'Radical prostatectomy + lung lobectomy — triggers MIPS #250 & #396',
+    report: `SPECIMEN A: Prostate, Radical Prostatectomy
+GROSS: Intact prostate gland 5.5 x 4.0 x 3.5 cm, 45 g, with bilateral seminal vesicles. Bilateral pelvic lymph nodes submitted in separate cassettes.
+FINAL DIAGNOSIS: Prostatic acinar adenocarcinoma. Gleason score 7 (3+4). Margins negative for invasive carcinoma. 0 of 6 pelvic lymph nodes positive. pT2c pN0.
+
+SPECIMEN B: Right Upper Lobe, Lobectomy
+GROSS: 350 g right upper lobe, 15 x 10 x 6 cm. A 4.5 cm firm tan-white mass extending to visceral pleura. Five peribronchial lymph nodes identified.
+FINAL DIAGNOSIS: Invasive adenocarcinoma, acinar predominant. Tumor 4.5 cm. Bronchial and vascular margins negative. Metastatic carcinoma in 1 of 5 peribronchial lymph nodes. pT2b pN1.`,
+    assistant: `ICD-10-CM
+• C61 — Malignant neoplasm of prostate (Specimen A)
+• C34.11 — Malignant neoplasm of upper lobe, right bronchus or lung (Specimen B)
+
+CPT
+• 88309 — Prostate, radical prostatectomy (Level VI)
+• 88309 — Right upper lobe, lobectomy for tumor (Level VI)
+  (Pelvic nodes in separate cassettes and peribronchial nodes may be separately reportable — confirm submission containers.)
+
+MIPS  ✅ two measures triggered
+• Specimen A → Measure #250 (Radical Prostatectomy): pT, pN, Gleason, AND margin status all documented → QDC 3267F (Performance Met)
+• Specimen B → Measure #396 (Lung Cancer Resection): pT, pN, AND histologic type all documented → QDC 3269F (Performance Met)
+Verify current MIPS specifications at qpp.cms.gov.
+
+RATIONALE
+Both specimens are Level VI resections (88309). MIPS triggers require BOTH the CPT and the ICD to match: 88309 + C61 → #250; 88309 + C34.xx → #396. Each report documents all required numerator elements, so both report the "Performance Met" QDC.
+
+⚠️ Suggestions only — a certified coder must validate before billing.`,
+    practice: `🎓 STEP-BY-STEP (for CPC learners) — MIPS focus
+
+STEP 1 — Two specimens, both Level VI
+• Prostate radical prostatectomy → 88309
+• Lung lobectomy for tumor → 88309
+
+STEP 2 — ICD-10-CM
+• Prostate cancer → C61
+• Right upper lobe lung cancer → C34.11
+
+STEP 3 — Check MIPS: does CPT + ICD match a denominator?
+A MIPS measure only triggers when BOTH match:
+• 88309 + C61 → Measure #250 (Radical Prostatectomy)
+• 88309 + C34.xx → Measure #396 (Lung Cancer Resection)
+
+STEP 4 — Did the report do the numerator action?
+• #250 needs pT, pN, Gleason, margin status → ALL present → QDC 3267F (Performance Met)
+• #396 needs pT, pN, histologic type → ALL present → QDC 3269F (Performance Met)
+
+STEP 5 — If an element were missing
+You'd report the "Performance Not Met" QDC instead — so documentation completeness directly drives the MIPS score.
+
+ANSWER: 88309 x2 | C61, C34.11 | MIPS #250 (3267F) + #396 (3269F)
+
+⚠️ Suggestions only — validate before billing. Verify MIPS at qpp.cms.gov.`,
+    extract: {
+      "Specimens": [
+        { "Sequence": 1, "Specimen_Type": "Radical prostatectomy", "Site": "Prostate", "Diagnosis": "Prostatic acinar adenocarcinoma, Gleason 3+4=7, margins negative, 0/6 nodes", "ICD_10_CM": [{ "code": "C61", "description": "Malignant neoplasm of prostate" }], "CPT": [{ "code": "88309", "description": "Level VI — radical prostatectomy" }], "MIPS": { "Measure": "#250 Radical Prostatectomy", "QDC": "3267F", "Status": "Performance Met" }, "Staging": "pT2c pN0" },
+        { "Sequence": 2, "Specimen_Type": "Lobectomy", "Site": "Right upper lobe, lung", "Diagnosis": "Invasive adenocarcinoma, acinar predominant, 4.5 cm, margins negative, 1/5 nodes", "ICD_10_CM": [{ "code": "C34.11", "description": "Malignant neoplasm of upper lobe, right bronchus or lung" }], "CPT": [{ "code": "88309", "description": "Level VI — lung lobectomy for tumor" }], "MIPS": { "Measure": "#396 Lung Cancer Resection", "QDC": "3269F", "Status": "Performance Met" }, "Staging": "pT2b pN1" }
+      ],
+      "Coding_Integrity_Notes": [
+        "MIPS triggers require BOTH CPT and ICD to match the denominator (88309+C61 -> #250; 88309+C34.xx -> #396).",
+        "Both reports document all numerator elements -> Performance Met QDCs (3267F, 3269F).",
+        "C61 and C34.11 verified valid for HIPAA transactions.",
+        "Separately submitted lymph nodes may be additionally reportable — confirm containers."
+      ],
+      "Reasoning": "Both are Level VI resections (88309). MIPS #250 and #396 each trigger on the matched CPT+ICD pair; required numerator documentation is present, so each reports its Performance-Met QDC. Verify at qpp.cms.gov."
+    }
+  },
+  {
+    id: 'breast',
+    title: 'Breast — lumpectomy w/ sentinel node',
+    desc: 'Infiltrating ductal carcinoma, grade 3, close margin',
+    report: `SPECIMEN: Breast, left, lumpectomy with sentinel lymph node biopsy
+CLINICAL: Palpable mass, upper outer quadrant, left breast. Screening-detected.
+GROSS: Oriented lumpectomy specimen 5.5 x 4.0 x 3.0 cm. Firm gray-white stellate mass measuring 2.3 cm, 0.4 cm from the closest (posterior) inked margin. Two separately submitted sentinel lymph nodes.
+MICROSCOPIC: Infiltrating ductal carcinoma, Nottingham grade 3 of 3. Lymphovascular invasion identified. Tumor 2.3 cm. Closest margin negative but close at 0.4 cm; others negative. Two sentinel nodes negative (0/2).
+DIAGNOSIS: Left breast: Infiltrating ductal carcinoma, grade 3, 2.3 cm, LVI present, margins negative (close 0.4 cm). Sentinel nodes 0/2. pT2 pN0.`,
+    assistant: `ICD-10-CM
+• C50.412 — Malignant neoplasm of upper-outer quadrant of left female breast (verified billable)
+
+CPT
+• 88307 — Level V surgical pathology (breast, lumpectomy)
+• 88307 — Sentinel lymph node(s), separately submitted (Level V)
+  → 88307 x2 (breast specimen + separately submitted sentinel nodes)
+
+MODIFIER
+• None required (global service, single pathologist/facility)
+
+MIPS
+• Measure #99 — Breast Cancer Resection Pathology Reporting (pT/pN category + histologic grade documented). Verify at qpp.cms.gov.
+
+RATIONALE
+Upper-outer quadrant + left + female → full-specificity billable code C50.412 (no downcoding to unspecified). Breast lumpectomy = Level V (88307). Sentinel nodes were SEPARATELY submitted → separate 88307 (not bundled). pT2 (2.3 cm) pN0 (0/2). LVI documented.
+
+⚠️ Suggestions only — a certified coder must validate before billing.`,
+    practice: `🎓 STEP-BY-STEP (for CPC learners)
+
+STEP 1 — Identify the specimen(s)
+Two separately submitted specimens: (a) breast lumpectomy, (b) sentinel lymph nodes.
+
+STEP 2 — Assign CPT level for each
+• Breast lumpectomy → surgical pathology Level V → 88307
+• Sentinel lymph node → 88307 (sentinel nodes are Level V, NOT the 88305 used for a single ordinary node)
+• Separately submitted → each gets its own code → 88307 x2
+
+STEP 3 — Assign ICD-10-CM (highest specificity!)
+• Site = upper-outer quadrant → .4
+• Laterality = left → 1
+• Sex = female → 2
+• Malignant → C50.412 (NOT C50.911 unspecified — that would be downcoding)
+
+STEP 4 — Modifiers?
+• No professional/technical split stated, one facility → no modifier.
+
+STEP 5 — MIPS?
+• Breast cancer resection → Measure #99 applies (grade + pT/pN documented).
+
+STEP 6 — Staging check
+• 2.3 cm = pT2 (>2 cm, ≤5 cm). 0/2 nodes = pN0.
+
+ANSWER: 88307 x2 | C50.412 | no modifier | MIPS #99
+
+⚠️ Suggestions only — validate before billing.`,
+    extract: {
+      "Patient_Identifiers": { "Specimen_Type": "Lumpectomy with sentinel lymph node biopsy", "Primary_Anatomic_Site": "Upper outer quadrant, left breast" },
+      "Diagnostic_Codes": {
+        "ICD_O_3_Topography": "C50.4",
+        "ICD_O_3_Morphology": "8500/3",
+        "SNOMED_CT_Code": "82711006",
+        "ICD_10_CM": [ { "code": "C50.412", "description": "Malignant neoplasm of upper-outer quadrant of left female breast" } ],
+        "CPT": [
+          { "code": "88307", "description": "Level V surgical pathology — breast, lumpectomy" },
+          { "code": "88307", "description": "Level V — sentinel lymph node(s), separately submitted" }
+        ]
+      },
+      "Tumor_Characteristics": { "Histologic_Type": "Infiltrating ductal carcinoma", "Histologic_Grade": "G3", "Tumor_Size_cm": 2.3, "Lymphovascular_Invasion": true },
+      "Margins_and_Staging": { "Surgical_Margins_Status": "Close", "Pathologic_pT_Stage": "pT2", "Pathologic_pN_Stage": "pN0" },
+      "Reasoning": "Morphology 8500/3 = infiltrating duct carcinoma NOS. ICD-10-CM C50.412 derived from documented left/female/upper-outer quadrant (full specificity, no downcode). Breast lumpectomy = 88307; sentinel nodes separately submitted = a second 88307 (not bundled). Margin 'negative but close at 0.4 cm' captured as Close, not Negative."
+    }
+  },
+  {
+    id: 'colon',
+    title: 'Colon + rectum — 3 polypectomies',
+    desc: 'Adenomas at 145 cm & 75 cm; rectal hemorrhoids',
+    report: `FINAL DIAGNOSIS:
+1. Polyp, colon at 145 cm, polypectomy: Tubular adenoma with tubulovillous differentiation. Negative for high-grade dysplasia.
+2. Polyp, colon at 75 cm, polypectomy: Tubular adenoma. Negative for high-grade dysplasia.
+3. Polyp, rectum, polypectomy: Benign anorectal mucosa with reactive changes compatible with hemorrhoids. Negative for malignancy.
+GROSS: Three specimens, each separately submitted in its own cassette.`,
+    assistant: `ICD-10-CM (sequenced: more proximal / longer segment first)
+• D12.2 — Benign neoplasm of ascending colon (polyp at 145 cm)
+• D12.4 — Benign neoplasm of descending colon (polyp at 75 cm)
+• K64.9 — Unspecified hemorrhoids (rectal specimen)
+
+CPT
+• 88305 x3 — Level IV surgical pathology (each polyp separately submitted)
+
+MODIFIER / MIPS
+• None triggered (benign specimens).
+
+RATIONALE
+• SEQUENCING: 145 cm (ascending) sequenced before 75 cm (descending) — more proximal/longer segment first.
+• DEPTH→SITE: 145 cm ≈ ascending colon (D12.2); 75 cm ≈ descending colon (D12.4).
+• ADENOMA over polyp: tubular adenoma coded as benign neoplasm (D12.-), NOT generic polyp K63.5.
+• NO UPCODING: "negative for high-grade dysplasia" respected — no dysplasia/malignancy code.
+• BUNDLING: 3 separate cassettes → 88305 x3.
+• Depth ranges are approximate — confirm segment against the endoscopy note.
+
+⚠️ Suggestions only — validate before billing.`,
+    practice: `🎓 STEP-BY-STEP (for CPC learners)
+
+STEP 1 — How many specimens?
+Three, each in its own cassette → three separate CPT codes.
+
+STEP 2 — CPT level
+Colon/rectal polyp = Level IV = 88305. Three specimens → 88305 x3.
+
+STEP 3 — Convert depth to anatomic site
+• 145 cm ≈ ascending colon
+• 75 cm ≈ descending colon
+(Depth-to-site map; confirm with endoscopy note.)
+
+STEP 4 — Specific diagnosis beats generic
+Tubular adenoma = benign NEOPLASM → D12.- series, NOT generic polyp K63.5.
+• Ascending colon adenoma → D12.2
+• Descending colon adenoma → D12.4
+• Rectal hemorrhoids → K64.9
+
+STEP 5 — Sequence correctly
+More proximal / longer segment first: 145 cm (D12.2) before 75 cm (D12.4), then rectum.
+
+STEP 6 — Watch for upcoding
+"Negative for high-grade dysplasia" → do NOT add a dysplasia code.
+
+ANSWER: 88305 x3 | D12.2, D12.4, K64.9
+
+⚠️ Suggestions only — validate before billing.`,
+    extract: {
+      "Specimens": [
+        { "Sequence": 1, "Specimen_Type": "Polypectomy", "Site": "Colon, 145 cm (ascending)", "Diagnosis": "Tubular adenoma with tubulovillous differentiation; negative for high-grade dysplasia", "ICD_10_CM": [{ "code": "D12.2", "description": "Benign neoplasm of ascending colon" }], "CPT": [{ "code": "88305", "description": "Level IV — colon polyp" }] },
+        { "Sequence": 2, "Specimen_Type": "Polypectomy", "Site": "Colon, 75 cm (descending)", "Diagnosis": "Tubular adenoma; negative for high-grade dysplasia", "ICD_10_CM": [{ "code": "D12.4", "description": "Benign neoplasm of descending colon" }], "CPT": [{ "code": "88305", "description": "Level IV — colon polyp" }] },
+        { "Sequence": 3, "Specimen_Type": "Polypectomy", "Site": "Rectum", "Diagnosis": "Benign anorectal mucosa, hemorrhoids; negative for malignancy", "ICD_10_CM": [{ "code": "K64.9", "description": "Unspecified hemorrhoids" }], "CPT": [{ "code": "88305", "description": "Level IV — anus/rectum" }] }
+      ],
+      "CPT_Summary": "88305 x3 (three separately submitted specimens)",
+      "Coding_Integrity_Notes": [
+        "SEQUENCING: 145 cm (ascending) before 75 cm (descending) — more proximal first.",
+        "SPECIFICITY: adenoma coded as benign neoplasm D12.-, not generic polyp K63.5.",
+        "DEPTH→SITE: mapped via colonoscopy depth reference; confirm against endoscopy note.",
+        "NO UPCODING: no dysplasia/malignancy code (negative for high-grade dysplasia).",
+        "BILLABILITY: D12.2, D12.4, K64.9 all verified valid for HIPAA transactions."
+      ],
+      "Reasoning": "Each polypectomy separately submitted → own 88305. Adenomas coded as site-specific benign neoplasms using the depth-to-site map. Rectal specimen showed hemorrhoids (K64.9), not a neoplasm."
+    }
+  },
+  {
+    id: 'whipple',
+    title: 'Whipple (pancreaticoduodenectomy)',
+    desc: 'Pancreatic head adenocarcinoma, multi-organ',
+    report: `SPECIMEN: Pancreaticoduodenectomy (Whipple) — pancreas, duodenum, distal stomach, gallbladder; separately submitted peripancreatic lymph node basin.
+CLINICAL: Pancreatic head mass.
+GROSS: Whipple resection. Firm mass in pancreatic head, 3.8 cm.
+MICROSCOPIC: Invasive ductal adenocarcinoma of pancreatic head, moderately differentiated (Grade 2), 3.8 cm. All margins microscopically negative (R0). 2 of 18 regional lymph nodes positive for metastatic adenocarcinoma. Intraoperative frozen section performed on pancreatic neck margin (1 block).
+DIAGNOSIS: Pancreatic head: Invasive ductal adenocarcinoma, G2, 3.8 cm, R0. Nodes 2/18. pT2 pN1.`,
+    assistant: `ICD-10-CM
+• C25.0 — Malignant neoplasm of head of pancreas (verified billable)
+
+CPT
+• 88309 — Pancreas resection (Level VI; Whipple is inherently Level VI)
+• 88307 — Distal stomach (→ 88309 if tumor-involved; not involved here)
+• 88307 — Duodenum (→ 88309 if tumor-involved; not involved here)
+• 88304 — Gallbladder
+• 88307 — Peripancreatic lymph node basin (separately submitted)
+• 88331 — Intraoperative frozen section, first block (pancreatic neck margin)
+
+MODIFIER
+• None required unless professional/technical split applies.
+
+MIPS
+• Consider pancreatic cancer resection reporting measure — verify applicability at qpp.cms.gov.
+
+RATIONALE
+Whipple = multi-organ Level VI. Each named organ coded by its own level (pancreas 88309; stomach/duodenum 88307 base, → 88309 only if tumor-involved; gallbladder 88304). Node basin separately submitted → 88307. On-table frozen margin → 88331. Staging pT2 pN1 (2/18 nodes).
+
+⚠️ Suggestions only — validate before billing. Whipple bundling can vary by payer/CPT Assistant updates.`,
+    practice: `🎓 STEP-BY-STEP (for CPC learners)
+
+STEP 1 — Recognize the specimen
+Whipple = pancreas + duodenum + distal stomach + gallbladder. Inherently Level VI due to multi-organ + staging.
+
+STEP 2 — Code each organ by its level
+• Pancreas resection → 88309
+• Distal stomach → 88307 (→ 88309 IF tumor-involved)
+• Duodenum → 88307 (→ 88309 IF tumor-involved)
+• Gallbladder → 88304
+
+STEP 3 — Separately submitted elements
+• Peripancreatic node basin (separate container) → 88307
+• (Sentinel node, if separately reported → separate 88307)
+
+STEP 4 — Intraoperative frozen sections
+• Pancreatic neck margin, 1 block → 88331 (first block)
+• Each additional block → 88332
+
+STEP 5 — Add-ons if documented
+• Special stains → 88312/88313/88314
+• Decalcification → 88311
+
+STEP 6 — ICD + staging
+• C25.0 (head of pancreas). pT2 (3.8 cm), pN1 (2/18 positive), R0 margins.
+
+ANSWER: 88309 + 88307 + 88307 + 88304 + 88307 + 88331 | C25.0
+
+⚠️ Suggestions only — validate before billing.`,
+    extract: {
+      "Patient_Identifiers": { "Specimen_Type": "Pancreaticoduodenectomy (Whipple)", "Primary_Anatomic_Site": "Head of pancreas" },
+      "Diagnostic_Codes": {
+        "ICD_O_3_Topography": "C25.0",
+        "ICD_O_3_Morphology": "8500/3",
+        "SNOMED_CT_Code": "8500/3 (infiltrating duct carcinoma)",
+        "ICD_10_CM": [ { "code": "C25.0", "description": "Malignant neoplasm of head of pancreas" } ],
+        "CPT": [
+          { "code": "88309", "description": "Level VI — pancreas resection (Whipple primary)" },
+          { "code": "88307", "description": "Distal stomach (→88309 if tumor-involved)" },
+          { "code": "88307", "description": "Duodenum (→88309 if tumor-involved)" },
+          { "code": "88304", "description": "Gallbladder" },
+          { "code": "88307", "description": "Peripancreatic lymph node basin, separately submitted" },
+          { "code": "88331", "description": "Intraoperative frozen section, first block (pancreatic neck margin)" }
+        ]
+      },
+      "Tumor_Characteristics": { "Histologic_Type": "Invasive ductal adenocarcinoma", "Histologic_Grade": "G2", "Tumor_Size_cm": 3.8, "Lymphovascular_Invasion": "Not_Mentioned" },
+      "Margins_and_Staging": { "Surgical_Margins_Status": "Negative", "Pathologic_pT_Stage": "pT2", "Pathologic_pN_Stage": "pN1" },
+      "Reasoning": "Whipple is inherently Level VI (88309 for pancreas). Stomach and duodenum coded 88307 base (would rise to 88309 only if tumor-involved). Gallbladder 88304. Separately submitted node basin = 88307. On-table pancreatic neck frozen margin = 88331. R0 = all margins negative; 2/18 nodes = pN1."
+    }
+  },
+  {
+    id: 'phi',
+    title: '🛑 Report WITH patient identifiers',
+    desc: 'Demonstrates the HIPAA-safe rejection',
+    report: `Patient Name: Doe, John
+MRN: 4837291   Accession: S23-4567
+Collected: 03/14/2024   Ordering Provider: Dr. Smith
+SPECIMEN: Skin, left forearm, shave biopsy
+DIAGNOSIS: Basal cell carcinoma, margins negative.`,
+    blocked: true
+  }
+];
+
+let mode = 'assistant';
+let currentSample = null;
+
+function buildSamples() {
+  const c = document.getElementById('samples');
+  c.innerHTML = '';
+  SAMPLES.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'sample-btn';
+    b.id = 'samp_' + s.id;
+    b.innerHTML = `<div class="st">${s.title}</div><div class="sd">${s.desc}</div>`;
+    b.onclick = () => pickSample(s.id);
+    c.appendChild(b);
+  });
+}
+function pickSample(id) {
+  currentSample = SAMPLES.find(s => s.id === id);
+  document.querySelectorAll('.sample-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('samp_' + id).classList.add('active');
+  document.getElementById('reportBox').value = currentSample.report;
+  document.getElementById('result').className = 'result';
+  document.getElementById('tryHint').textContent = '👇 Now tap "Get Codes"';
+}
+function setMode(m) {
+  mode = m;
+  document.getElementById('mAssistant').classList.toggle('active', m==='assistant');
+  document.getElementById('mPractice').classList.toggle('active', m==='practice');
+  document.getElementById('mExtract').classList.toggle('active', m==='extract');
+  let d;
+  if (m==='practice') d = 'Learning mode: full step-by-step coding reasoning for CPC aspirants.';
+  else if (m==='extract') d = 'Structured mode: clean JSON with registry + billable ICD-10-CM & CPT.';
+  else d = 'Real-life doubt-solver: pick a sample report, get the codes with rationale.';
+  document.getElementById('modeDesc').textContent = d;
+  document.getElementById('result').className = 'result';
+}
+
+// Client-side PHI check (same logic as production backend).
+// Returns array of specific identifier types found, e.g. ['DOB','Accession#'].
+function detectPHI(text) {
+  const checks = [
+    ['MRN',          /\bmrn\b\s*[:#]?\s*\d{4,}/i],
+    ['MRN',          /medical record (number|no|#)\s*[:#]?\s*\d{4,}/i],
+    ['Accession#',   /\baccession\s*(no|number|#)?\s*[:#]?\s*[a-z]{0,3}[-]?\d{2,}[-]?\d{2,}/i],
+    ['DOB',          /\b(dob|date of birth)\s*[:#]?\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/i],
+    ['SSN',          /\bssn\b\s*[:#]?\s*\d{3}-?\d{2}-?\d{4}/i],
+    ['Patient Name', /\bpatient (name)?\s*[:#]\s*[a-z]+,?\s+[a-z]+/i],
+    ['Patient Name', /\bname\s*[:#]\s*[a-z]+,?\s+[a-z]+/i],
+    ['Physician Name',/\b(physician|provider|ordering (provider|physician)|attending)\s*[:#]\s*(dr\.?\s*)?[a-z]+/i],
+    ['Physician Name',/\bdr\.\s+[a-z]{2,}\b/i],
+    ['Phone/Fax',    /\b(phone|tel|fax)\s*[:#]?\s*\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/i],
+    ['Date',         /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/],
+    ['Room/Bed#',    /\b(room|bed)\s*(no|number|#)?\s*[:#]?\s*\d+/i]
+  ];
+  const found = [];
+  for (const [label, re] of checks) {
+    if (re.test(text) && !found.includes(label)) found.push(label);
+  }
+  // If DOB already captured, drop the generic 'Date' to avoid redundancy
+  if (found.includes('DOB')) {
+    const i = found.indexOf('Date');
+    if (i > -1) found.splice(i, 1);
+  }
+  return found;
+}
+
+function runCoding() {
+  const text = document.getElementById('reportBox').value.trim();
+  const resultEl = document.getElementById('result');
+  const loadingEl = document.getElementById('loading');
+  resultEl.className = 'result';
+
+  if (!text) {
+    resultEl.className = 'result show';
+    resultEl.textContent = 'Please select a sample report (or paste your own de-identified report).';
+    return;
+  }
+
+  loadingEl.className = 'loading show';
+  // Simulate the AI "thinking" briefly for realism
+  setTimeout(() => {
+    loadingEl.className = 'loading';
+
+    // PHI guardrail — runs on any input, including pasted
+    const phiFound = detectPHI(text);
+    if (phiFound.length > 0) {
+      resultEl.className = 'result show blocked';
+      resultEl.innerHTML = 'File contains sensitive information so couldn\u2019t be processed'
+        + '<div style="font-weight:400;font-size:.85rem;margin-top:10px;color:#f0b0ab">Detected: '
+        + phiFound.map(p => '(' + p + ')').join(' ')
+        + '</div><div style="font-weight:400;font-size:.8rem;margin-top:8px;color:#d99">Please remove these identifiers and resubmit.</div>';
+      return;
+    }
+
+    // If it matches a known sample, show its pre-loaded output
+    const match = SAMPLES.find(s => !s.blocked && text.includes(s.report.slice(0, 40)));
+    if (match) {
+      resultEl.className = 'result show';
+      if (mode === 'extract') {
+        resultEl.textContent = JSON.stringify(match.extract, null, 2);
+      } else if (mode === 'practice') {
+        resultEl.textContent = match.practice;
+      } else {
+        resultEl.textContent = match.assistant;
+      }
+    } else {
+      // Custom text that passed PHI check but isn't a known sample
+      resultEl.className = 'result show';
+      resultEl.textContent = '✅ Input accepted (no patient identifiers detected).\n\nThis is the DEMO version, which shows full coded outputs for the built-in sample cases. In the production version, your report would now be sent to the live AI model and coded here.\n\n👉 Try one of the sample reports above to see complete ICD-10-CM / CPT / modifier / MIPS output.';
+    }
+  }, 650);
+}
+
+buildSamples();
+</script>
+</body>
+</html>
